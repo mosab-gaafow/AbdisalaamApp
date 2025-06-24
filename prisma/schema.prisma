@@ -1,0 +1,131 @@
+// schema.prisma
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "mongodb"
+  url      = env("DATABASE_URL")
+}
+
+enum UserRole {
+  admin
+  vehicle_owner
+  traveler
+}
+
+
+model User {
+  id          String     @id @default(auto()) @map("_id") @db.ObjectId
+  email       String     @unique
+  password    String
+  role        UserRole
+  name        String
+  phone       String?
+  image       String?
+  isVerified  Boolean    @default(false)
+  isDeleted   Boolean    @default(false)
+  createdAt   DateTime   @default(now())
+  updatedAt   DateTime   @updatedAt
+
+  resetCode         String?
+  resetCodeExpires  DateTime?
+  
+  vehicles    Vehicle[]  @relation("UserVehicles")
+  trips       Trip[]     
+  bookings    Booking[]  @relation("UserBookings")
+  // activityLog ActivityLog[]
+}
+
+model Vehicle {
+  id          String   @id @default(auto()) @map("_id") @db.ObjectId
+  userId      String   @db.ObjectId
+  plateNumber String   @unique
+  model       String
+  capacity    Int
+  color       String?
+  type        VehicleType
+  isDeleted   Boolean  @default(false)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  owner       User     @relation(name: "UserVehicles", fields: [userId], references: [id])
+}
+
+enum VehicleType {
+  Car
+  Land_Cruiser
+  BL
+  Bus
+  Truck
+  Coaster
+}
+
+enum BookingStatus {
+  PENDING
+  CONFIRMED
+  CANCELLED
+  EXPIRED     // Auto-cancelled by CRON after X mins
+}
+
+enum TripStatus {
+  PENDING
+  ONGOING
+  COMPLETED
+  CANCELLED
+}
+
+model Trip {
+  id             String   @id @default(auto()) @map("_id") @db.ObjectId
+  origin         String
+  destination    String
+  date           DateTime
+  time           String
+  price          Float
+  totalSeats     Int
+  availableSeats Int
+  vehicleIds     String[]
+  bookings       Booking[]
+  isDeleted      Boolean  @default(false)
+  status         TripStatus @default(PENDING)
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+
+  // ✅ Add this 👇
+  userId String @db.ObjectId
+  user   User   @relation(fields: [userId], references: [id])
+}
+
+
+model Booking {
+  id          String        @id @default(auto()) @map("_id") @db.ObjectId
+  tripId      String        @db.ObjectId
+  userId      String        @db.ObjectId
+  seatsBooked Int
+  status      BookingStatus @default(PENDING)
+  bookingTime DateTime      @default(now())
+  confirmedAt DateTime?     // For admin-approved time
+  expiredAt   DateTime?     // If expired via CRON
+  cancelledAt DateTime?     // If cancelled
+  isDeleted   Boolean       @default(false)
+  trip        Trip          @relation(fields: [tripId], references: [id])
+  user        User          @relation(name: "UserBookings", fields: [userId], references: [id])
+
+  //  fields for manual payment tracking
+   amountPaid       Float?
+  paymentStatus    String?       // e.g., 'pending', 'paid', 'failed'
+  paymentMethod    String?       // e.g., 'evcplus'
+  transactionId    String?       // entered by the traveler
+  paymentVerified  Boolean       @default(false)
+}
+
+// model ActivityLog {
+//   id          String   @id @default(auto()) @map("_id") @db.ObjectId
+//   userId      String   @db.ObjectId
+//   action      String
+//   entity      String
+//   entityId    String?  @db.ObjectId
+//   description String?
+//   timestamp   DateTime @default(now())
+//   user        User     @relation(fields: [userId], references: [id])
+// }
