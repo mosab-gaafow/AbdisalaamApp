@@ -51,6 +51,8 @@ router.get('/getAllTrips', protectRoute, async (req, res) => {
   try {
     const { origin, destination, date, page = 1, limit = 10, status } = req.query;
 
+    const { tripType } = req.query; 
+
     const filters = {
       isDeleted: false,
       userId: req.user.id,
@@ -60,6 +62,10 @@ router.get('/getAllTrips', protectRoute, async (req, res) => {
     if (destination) filters.destination = { contains: destination, mode: 'insensitive' };
     if (date) filters.date = new Date(date);
     if (status) filters.status = status;
+
+    if (tripType === "Travel") filters.isTourism = false;
+if (tripType === "Tourism") filters.isTourism = true;
+
 
     const skip = (parseInt(page) - 1) * parseInt(limit);
     const take = parseInt(limit);
