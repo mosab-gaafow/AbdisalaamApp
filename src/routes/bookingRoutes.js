@@ -101,6 +101,7 @@ router.get("/ownerBookings", protectRoute, async (req, res) => {
 });
 
 
+// POST /registerBooking
 router.post("/registerBooking", protectRoute, async (req, res) => {
   const { tripId, seatsBooked } = req.body;
   const userId = req.user.id;
@@ -110,58 +111,40 @@ router.post("/registerBooking", protectRoute, async (req, res) => {
   }
 
   try {
-    const result = await prisma.$transaction(async (tx) => {
-      // Step 1: Check if user already booked this trip
-      const existingBooking = await tx.booking.findFirst({
-        where: {
-          userId,
-          tripId,
-          isDeleted: false,
-        },
-      });
-
-      if (existingBooking) {
-        throw new Error("You already have a booking for this trip");
-      }
-
-      // Step 2: Atomically decrease availableSeats if enough seats
-      const updatedTrip = await tx.trip.updateMany({
-        where: {
-          id: tripId,
-          isDeleted: false,
-          status: "PENDING",
-          availableSeats: { gte: seatsBooked },
-        },
-        data: {
-          availableSeats: {
-            decrement: seatsBooked,
-          },
-        },
-      });
-
-      if (updatedTrip.count === 0) {
-        throw new Error("Not enough seats available or trip not found");
-      }
-
-      // Step 3: Create booking
-      const booking = await tx.booking.create({
-        data: {
-          tripId,
-          userId,
-          seatsBooked,
-          status: "PENDING",
-        },
-      });
-
-      return booking;
+    const existing = await prisma.booking.findFirst({
+      where: {
+        tripId,
+        userId,
+        status: { in: ["PENDING", "CONFIRMED"] }, // already booked
+        isDeleted: false,
+      },
     });
 
-    res.status(201).json(result);
+    if (existing) {
+      return res.status(400).json({ error: "You already booked this trip" });
+    }
+
+    const trip = await prisma.trip.findUnique({ where: { id: tripId } });
+    if (!trip || trip.isDeleted || trip.status !== "PENDING") {
+      return res.status(404).json({ error: "Trip not bookable" });
+    }
+
+    const booking = await prisma.booking.create({
+      data: {
+        tripId,
+        userId,
+        seatsBooked,
+        status: "PENDING",
+      },
+    });
+
+    res.status(201).json(booking);
   } catch (err) {
     console.error("Booking error:", err.message);
-    res.status(400).json({ error: err.message });
+    res.status(500).json({ error: "Booking failed" });
   }
 });
+
 
 
 
@@ -195,24 +178,25 @@ router.get("/:id", async (req, res) => {
 });
 
 //  UPDATE booking
-//  UPDATE booking
+// UPDATE booking
 router.put("/:id", async (req, res) => {
   try {
     const { seatsBooked, status } = req.body;
 
-    const updateData = {
-      seatsBooked,
-      status,
-    };
+    const booking = await prisma.booking.findUnique({
+      where: { id: req.params.id },
+      include: { trip: true },
+    });
 
-    // 👇 Restore seats if status is CANCELLED
+    if (!booking) {
+      return res.status(404).json({ error: "Booking not found" });
+    }
+
+    const updateData = { seatsBooked, status };
+
     if (status === "CANCELLED") {
-      const booking = await prisma.booking.findUnique({
-        where: { id: req.params.id },
-        include: { trip: true },
-      });
-
-      if (booking && booking.status !== "CANCELLED") {
+      // Only restore if it was CONFIRMED before
+      if (booking.status === "CONFIRMED") {
         await prisma.trip.update({
           where: { id: booking.tripId },
           data: {
@@ -225,39 +209,40 @@ router.put("/:id", async (req, res) => {
     }
 
     if (status === "CONFIRMED") {
-      const booking = await prisma.booking.findUnique({
-        where: { id: req.params.id },
-        include: {
-          trip: { select: { price: true } }, // ✅ fix here
+      // 🔐 Use safe atomic check to subtract seats
+      const seatUpdate = await prisma.trip.updateMany({
+        where: {
+          id: booking.tripId,
+          availableSeats: { gte: booking.seatsBooked },
+        },
+        data: {
+          availableSeats: { decrement: booking.seatsBooked },
         },
       });
-    
-      if (!booking) {
-        return res.status(404).json({ error: "Booking not found" });
+
+      if (seatUpdate.count === 0) {
+        return res.status(400).json({ error: "Not enough seats available" });
       }
-    
+
       updateData.paymentVerified = true;
       updateData.paymentStatus = "paid";
       updateData.amountPaid = booking.trip.price * booking.seatsBooked;
     }
-    
 
-    const booking = await prisma.booking.update({
+    const updated = await prisma.booking.update({
       where: { id: req.params.id },
       data: updateData,
     });
 
-    // console.log("✅ amountPaid:", updateData.amountPaid);
-
-
-    res.json(booking);
+    res.json(updated);
   } catch (err) {
+    console.error("Update booking error:", err.message);
     res.status(500).json({ error: err.message });
   }
 });
 
 
-//  DELETE booking
+
 router.delete("/:id", async (req, res) => {
   try {
     const booking = await prisma.booking.findUnique({
@@ -268,8 +253,8 @@ router.delete("/:id", async (req, res) => {
       return res.status(404).json({ error: "Booking not found" });
     }
 
-    // 👇 Only increment seats if this wasn't already cancelled or expired
-    if (booking.status !== 'CANCELLED' && booking.status !== 'EXPIRED') {
+    // 🧠 Only restore seats if it was confirmed before
+    if (booking.status === "CONFIRMED") {
       await prisma.trip.update({
         where: { id: booking.tripId },
         data: {
@@ -284,13 +269,59 @@ router.delete("/:id", async (req, res) => {
       where: { id: req.params.id },
     });
 
-    res.json({ message: "Booking deleted and seats restored." });
+    res.json({ message: "Booking deleted and seats adjusted." });
   } catch (err) {
+    console.error("Delete booking error:", err.message);
     res.status(500).json({ error: err.message });
   }
 });
 
 
+
+// Confirm EVC+ Payment (Traveler submits transaction ID)
+// router.post('/confirmPayment', protectRoute, async (req, res) => {
+//   try {
+//     const { bookingId, transactionId } = req.body;
+
+//     if (!bookingId || !transactionId) {
+//       return res.status(400).json({ error: 'Booking ID and transaction ID are required' });
+//     }
+
+//     const booking = await prisma.booking.findUnique({ where: { id: bookingId } });
+//     if (!booking) {
+//       return res.status(404).json({ error: 'Booking not found' });
+//     }
+
+//     // Optional: prevent duplicate payment confirmation
+//     if (booking.paymentStatus === 'paid') {
+//       return res.status(400).json({ error: 'Payment already marked as paid' });
+//     }
+
+//     const trip = await prisma.trip.findUnique({
+//       where: { id: booking.tripId },
+//     });
+    
+//     const updatedBooking = await prisma.booking.update({
+//       where: { id: bookingId },
+//       data: {
+//         paymentStatus: 'paid',
+//         paymentMethod: 'evcplus',
+//         transactionId,
+//         // amountPaid: trip?.price || 0,  // 💰 record amount for owner's dashboard
+//         amountPaid: (trip?.price || 0) * booking.seatsBooked,
+//         paymentVerified: true,
+//         status: 'CONFIRMED',
+//         confirmedAt: new Date(),
+//       },
+//     });
+    
+
+//     res.status(200).json({ message: 'Payment submitted successfully', booking: updatedBooking });
+//   } catch (error) {
+//     console.error('Payment confirmation error:', error);
+//     res.status(500).json({ error: 'Failed to confirm payment' });
+//   }
+// });
 
 // Confirm EVC+ Payment (Traveler submits transaction ID)
 router.post('/confirmPayment', protectRoute, async (req, res) => {
@@ -301,34 +332,47 @@ router.post('/confirmPayment', protectRoute, async (req, res) => {
       return res.status(400).json({ error: 'Booking ID and transaction ID are required' });
     }
 
-    const booking = await prisma.booking.findUnique({ where: { id: bookingId } });
+    const booking = await prisma.booking.findUnique({
+      where: { id: bookingId },
+    });
+
     if (!booking) {
       return res.status(404).json({ error: 'Booking not found' });
     }
 
-    // Optional: prevent duplicate payment confirmation
     if (booking.paymentStatus === 'paid') {
       return res.status(400).json({ error: 'Payment already marked as paid' });
     }
 
-    const trip = await prisma.trip.findUnique({
-      where: { id: booking.tripId },
+    // 🔐 Atomically check available seats and decrement safely
+    const seatUpdate = await prisma.trip.updateMany({
+      where: {
+        id: booking.tripId,
+        availableSeats: { gte: booking.seatsBooked },
+      },
+      data: {
+        availableSeats: { decrement: booking.seatsBooked },
+      },
     });
-    
+
+    if (seatUpdate.count === 0) {
+      return res.status(400).json({ error: 'Not enough seats available' });
+    }
+
+    const trip = await prisma.trip.findUnique({ where: { id: booking.tripId } });
+
     const updatedBooking = await prisma.booking.update({
       where: { id: bookingId },
       data: {
         paymentStatus: 'paid',
         paymentMethod: 'evcplus',
         transactionId,
-        // amountPaid: trip?.price || 0,  // 💰 record amount for owner's dashboard
         amountPaid: (trip?.price || 0) * booking.seatsBooked,
         paymentVerified: true,
         status: 'CONFIRMED',
         confirmedAt: new Date(),
       },
     });
-    
 
     res.status(200).json({ message: 'Payment submitted successfully', booking: updatedBooking });
   } catch (error) {
@@ -336,6 +380,7 @@ router.post('/confirmPayment', protectRoute, async (req, res) => {
     res.status(500).json({ error: 'Failed to confirm payment' });
   }
 });
+
 
 
 router.get("/ownerEarnings", protectRoute, async (req, res) => {
