@@ -39,27 +39,18 @@ router.get("/ownerBookings", protectRoute, async (req, res) => {
   try {
     const ownerId = req.user.id;
 
-    // Find all trips created by this owner
     const ownerTrips = await prisma.trip.findMany({
-      where: {
-        userId: ownerId,
-        isDeleted: false,
-      },
-      select: {
-        id: true,
-      },
+      where: { userId: ownerId, isDeleted: false },
+      select: { id: true },
     });
 
     const tripIds = ownerTrips.map((trip) => trip.id);
 
-    // Fetch bookings for those trips
     const bookings = await prisma.booking.findMany({
       where: {
         tripId: { in: tripIds },
       },
-      orderBy: {
-        bookingTime: "desc",
-      },
+      orderBy: { bookingTime: "desc" },
       select: {
         id: true,
         seatsBooked: true,
@@ -68,32 +59,18 @@ router.get("/ownerBookings", protectRoute, async (req, res) => {
         paymentStatus: true,
         status: true,
         trip: {
-          select: {
-            origin: true,
-            destination: true,
-            date: true,
-            time: true,
-          },
+          select: { origin: true, destination: true, date: true, time: true },
         },
-        user: {
-          select: {
-            name: true,
-            phone: true,
-          },
-        },
+        user: { select: { name: true, phone: true } },
       },
     });
-    
 
-    console.log("🔑 Owner ID:", ownerId);
-    console.log("🧳 Trip IDs:", tripIds);
-    console.log("📦 Bookings fetched:", bookings.length);
+    // ✅ Calculate total balance from CONFIRMED + paid bookings
+    const balance = bookings
+      .filter((b) => b.status === "CONFIRMED" && b.paymentStatus === "paid")
+      .reduce((sum, b) => sum + (b.amountPaid || 0), 0);
 
-    if (tripIds.length === 0) {
-      console.log("⚠️ No trips created by this owner");
-    }
-
-    res.json(bookings);
+    res.json({ bookings, balance });
   } catch (err) {
     console.error("Owner Booking Fetch Error:", err);
     res.status(500).json({ error: "Failed to fetch owner bookings" });
