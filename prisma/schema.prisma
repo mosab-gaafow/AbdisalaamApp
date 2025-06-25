@@ -117,15 +117,19 @@ model Booking {
   paymentMethod    String?       // e.g., 'evcplus'
   transactionId    String?       // entered by the traveler
   paymentVerified  Boolean       @default(false)
+  paymentLogs      PaymentLog[]
 }
 
-// model ActivityLog {
-//   id          String   @id @default(auto()) @map("_id") @db.ObjectId
-//   userId      String   @db.ObjectId
-//   action      String
-//   entity      String
-//   entityId    String?  @db.ObjectId
-//   description String?
-//   timestamp   DateTime @default(now())
-//   user        User     @relation(fields: [userId], references: [id])
-// }
+model PaymentLog {
+  id             String   @id @default(auto()) @map("_id") @db.ObjectId
+  bookingId      String   @db.ObjectId
+  phoneNumber    String
+  amount         Float
+  invoiceId      String
+  referenceId    String?
+  status         String
+  response       Json
+  createdAt      DateTime @default(now())
+
+  booking        Booking  @relation(fields: [bookingId], references: [id])
+}

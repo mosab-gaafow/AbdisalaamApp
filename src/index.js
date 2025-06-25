@@ -8,6 +8,8 @@ import bookingRoutes from './routes/bookingRoutes.js'
 import vehicleRoutes from './routes/vehicleRoutes.js';
 import adminRoutes from './routes/adminRoutes.js';
 import tripRoutes from './routes/tripRoutes.js';
+import paymentRoutes from "./routes/payment.js";
+
 import dotenv from 'dotenv';
 dotenv.config(); 
 
@@ -26,7 +28,8 @@ app.use("/api/auth", authRoutes)
 app.use('/api/vehicles', vehicleRoutes);
 app.use('/api/trips', tripRoutes);
 app.use('/api/bookings', bookingRoutes);
-app.use('/api/admin', adminRoutes); // or statsRoutes
+app.use('/api/admin', adminRoutes); 
+app.use("/api", paymentRoutes);
 
 
 
