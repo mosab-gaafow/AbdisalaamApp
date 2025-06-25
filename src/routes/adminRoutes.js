@@ -177,4 +177,29 @@ router.put('/update-profile', protectRoute, async (req, res) => {
   }
 });
 
+ //Admin: Update user info (name, email, role)Add commentMore actions
+router.patch('/updateUser/:id', protectRoute, async (req, res) => {
+  try {
+    if (req.user.role !== 'admin') {
+      return res.status(403).json({ message: 'Access denied. Admins only.' });
+    }
+
+    const { id } = req.params;
+    const { name, email, role } = req.body;
+
+    const updatedUser = await prisma.user.update({
+      where: { id },
+      data: {
+        name,
+        email,
+        role,
+      },
+    });
+    res.json({ message: 'User updated successfully', user: updatedUser });
+  } catch (err) {
+    console.error('User update error:', err.message);
+    res.status(500).json({ message: 'Failed to update user' });
+  }
+});
+
 export default router;
