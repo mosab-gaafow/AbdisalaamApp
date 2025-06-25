@@ -10,6 +10,7 @@ import {
   ActivityIndicator,
   Modal,
   Button,
+  Switch,
 } from "react-native";
 import React, { useEffect, useState } from "react";
 import { Ionicons } from "@expo/vector-icons";
@@ -20,10 +21,12 @@ import { API_URL } from "../../constants/api";
 import COLORS from "../../constants/color";
 import styles from "../styles/create.styles";
 import DateTimePicker from "@react-native-community/datetimepicker";
+import RefreshButton from "../components/RefreshButton";
 
 export default function Trip() {
   const router = useRouter();
   const { token } = useAuthStore();
+  const [expandedTripId, setExpandedTripId] = useState(null);
 
   const [origin, setOrigin] = useState("");
   const [destination, setDestination] = useState("");
@@ -33,6 +36,7 @@ export default function Trip() {
   const [status, setStatus] = useState("");
   const [totalSeats, setTotalSeats] = useState("");
   const [loading, setLoading] = useState(false);
+  const [tripTypeFilter, setTripTypeFilter] = useState("All"); // "All", "Travel", or "Tourism"
 
   const [showDatePicker, setShowDatePicker] = useState(false);
   const [showTimePicker, setShowTimePicker] = useState(false);
@@ -49,6 +53,8 @@ export default function Trip() {
 
   const [isEditing, setIsEditing] = useState(false);
   const [editTripId, setEditTripId] = useState(null);
+  const [refreshing, setRefreshing] = useState(false);
+
 
   const tripStatus = [
     { label: "Pending", value: "PENDING" },
@@ -57,20 +63,32 @@ export default function Trip() {
     { label: "Cancelled", value: "CANCELLED" },
   ];
 
-  const fetchTrips = async () => {
-    try {
-      const res = await fetch(`${API_URL}/trips/getAllTrips`, {
-        headers: { Authorization: `Bearer ${token}` },
-      });
+ const fetchTrips = async (typeParam = "All") => {
+  try {
+    const queryParam = typeParam === "All" ? "" : `?tripType=${typeParam}`;
+    const res = await fetch(`${API_URL}/trips/getAllTrips${queryParam}`, {
+      headers: { Authorization: `Bearer ${token}` },
+    });
 
-      const data = await res.json();
-      if (res.ok && data.trips) {
-        setTrips(data.trips);
-      }
-    } catch (e) {
-      console.error("Error fetching trips:", e.message);
+    const data = await res.json();
+    if (res.ok && data.trips) {
+      setTrips(data.trips);
     }
-  };
+  } catch (e) {
+    console.error("Error fetching trips:", e.message);
+  }
+};
+
+const handleRefresh = async () => {
+  try {
+    setRefreshing(true);
+    await fetchTrips(tripTypeFilter); // respect current filter
+  } finally {
+    setRefreshing(false);
+  }
+};
+
+
 
   useEffect(() => {
     fetchVehciles();
@@ -95,71 +113,15 @@ export default function Trip() {
       console.error("Failed to fetch vehciles:", e.message);
     }
   };
+    const [tripType, setTripType] = useState("Travel");
+const [tourismFeatures, setTourismFeatures] = useState({
+  lunch: true,
+  photographing: true,
+  sunsetView: true,
+  tourGuide: true,
+  culturalVisit: true,
+});
 
-  // const handleSubmit = async () => {
-  //   if (
-  //     !origin ||
-  //     !destination ||
-  //     !date ||
-  //     !time ||
-  //     !price ||
-  //     !totalSeats ||
-  //     !userId
-  //   ) {
-  //     Alert.alert("Error", "Please fill in all fields.");
-  //     return;
-  //   }
-
-  //   try {
-  //     setLoading(true);
-
-  //     const payload = {
-  //       origin,
-  //       destination,
-  //       date,
-  //       time,
-  //       price,
-  //       totalSeats,
-  //       status: type || "PENDING",
-  //       vehicleIds: [userId],
-  //     };
-
-  //     const endpoint = isEditing
-  //       ? `${API_URL}/trips/${editTripId}`
-  //       : `${API_URL}/trips/registerTrip`;
-
-  //     const method = isEditing ? "PUT" : "POST";
-
-  //     const res = await fetch(endpoint, {
-  //       method,
-  //       headers: {
-  //         Authorization: `Bearer ${token}`,
-  //         "Content-Type": "application/json",
-  //       },
-  //       body: JSON.stringify(payload),
-  //     });
-
-  //     const data = await res.json();
-  //     if (!res.ok) {
-  //       console.error("Error response from server:", data); 
-  //       throw new Error(data.message || "Something went wrong");
-        
-  //     }
-
-  //     Alert.alert(
-  //       "Success",
-  //       `Trip ${isEditing ? "updated" : "created"} successfully`
-  //     );
-  //     resetForm();
-  //     setModalVisible(false);
-
-  //     fetchTrips();
-  //   } catch (err) {
-  //     Alert.alert("Error", err.message);
-  //   } finally {
-  //     setLoading(false);
-  //   }
-  // };
 
 
   const handleSubmit = async () => {
@@ -200,16 +162,19 @@ export default function Trip() {
       throw new Error("Invalid totalSeats format");
     }
 
-    const payload = {
-      origin,
-      destination,
-      date: formattedDate, // Correct format for Prisma
-      time,
-      price: formattedPrice, // Correcting price to float
-      totalSeats: formattedTotalSeats, // Correcting totalSeats to integer
-      status: type || "PENDING",
-      vehicleIds: [userId],
-    };
+  const payload = {
+  origin,
+  destination,
+  date: formattedDate,
+  time,
+  price: formattedPrice,
+  totalSeats: formattedTotalSeats,
+  status: type || "PENDING",
+  vehicleIds: [userId],
+  isTourism: tripType === "Tourism",
+  tourismFeatures: tripType === "Tourism" ? tourismFeatures : undefined,
+};
+
 
     const endpoint = isEditing
       ? `${API_URL}/trips/${editTripId}`
@@ -260,6 +225,8 @@ export default function Trip() {
     setType(null);
     setIsEditing(false);
     setEditTripId(null);
+    setTripType("Travel");
+
   };
 
   const handleDeleteTrip = async (id) => {
@@ -313,6 +280,7 @@ export default function Trip() {
       >
         <Text style={{ color: "#fff", fontWeight: "bold" }}>+ Create Trip</Text>
       </TouchableOpacity>
+      
 
       {/* Create Trip Modal */}
       <Modal
@@ -349,6 +317,27 @@ export default function Trip() {
                   Enter details for your upcoming journey
                 </Text>
               </View>
+              <View style={styles.formGroup}>
+  <Text style={styles.label}>Trip Type *</Text>
+  <View style={{ flexDirection: "row", gap: 10 }}>
+    {["Travel", "Tourism"].map((item) => (
+      <TouchableOpacity
+        key={item}
+        onPress={() => setTripType(item)}
+        style={{
+          backgroundColor: tripType === item ? COLORS.primary : "#eee",
+          padding: 10,
+          borderRadius: 8,
+        }}
+      >
+        <Text style={{ color: tripType === item ? "#fff" : COLORS.textPrimary }}>
+          {item}
+        </Text>
+      </TouchableOpacity>
+    ))}
+  </View>
+</View>
+
 
               <View style={styles.form}>
                 {/* VEHICLE DROPDOWN */}
@@ -535,6 +524,34 @@ export default function Trip() {
                   </View>
                 </View>
 
+                {tripType === "Tourism" && (
+  <View style={styles.formGroup}>
+    <Text style={styles.label}>Included Tourism Features</Text>
+
+    {[
+      { key: "lunch", label: "Free Lunch" },
+      { key: "photographing", label: "Photographing & Videography" },
+      { key: "sunsetView", label: "Sunset/Sunrise Viewpoints" },
+      { key: "tourGuide", label: "Local Tour Guide" },
+      { key: "culturalVisit", label: "Cultural/Religious Site Visits" },
+    ].map((item) => (
+      <View
+        key={item.key}
+        style={{ flexDirection: "row", justifyContent: "space-between", marginVertical: 5 }}
+      >
+        <Text>{item.label}</Text>
+        <Switch
+          value={tourismFeatures[item.key]}
+          onValueChange={(val) =>
+            setTourismFeatures((prev) => ({ ...prev, [item.key]: val }))
+          }
+        />
+      </View>
+    ))}
+  </View>
+)}
+
+
                 {/* STATUS DROPDOWN */}
                 <View style={styles.formGroup}>
                   <Text style={styles.label}>Trip Status *</Text>
@@ -581,6 +598,11 @@ export default function Trip() {
                   )}
                 </TouchableOpacity>
 
+                {/* <View style={{ alignItems: "flex-end", marginRight: 20 }}>
+  <RefreshButton onPress={handleRefresh} loading={refreshing} />
+</View> */}
+
+
                 {/* CANCEL BUTTON */}
                 {/* <TouchableOpacity onPress={() => setModalVisible(false)} style={{ marginTop: 16, alignItems: "center" }}> */}
                 <TouchableOpacity
@@ -600,6 +622,38 @@ export default function Trip() {
         </View>
       </Modal>
 
+
+                  
+     <View style={{ marginBottom: 10, alignItems: "center" }}>
+  <Text style={{ fontWeight: "600", marginBottom: 6 }}>Filter by Trip Type</Text>
+  <View style={{ flexDirection: "row", gap: 10 }}>
+    {["All", "Travel", "Tourism"].map((type) => (
+      <TouchableOpacity
+        key={type}
+        onPress={() => {
+          setTripTypeFilter(type);
+          fetchTrips(type);
+        }}
+        style={{
+          backgroundColor: tripTypeFilter === type ? COLORS.primary : "#ddd",
+          paddingVertical: 6,
+          paddingHorizontal: 12,
+          borderRadius: 8,
+          marginHorizontal: 4,
+        }}
+      >
+        <Text style={{ color: tripTypeFilter === type ? "#fff" : "#000" }}>{type}</Text>
+      </TouchableOpacity>
+      
+    ))}
+    
+  </View>
+</View>
+
+
+      <RefreshButton onPress={handleRefresh} loading={refreshing} />
+
+
       {/* TRIP LIST */}
       <View style={{ padding: 20 }}>
         <Text
@@ -613,90 +667,114 @@ export default function Trip() {
           🚐 Your Trips
         </Text>
 
-        {trips.map((trip) => (
-          <View
-            key={trip.id}
-            style={{
-              backgroundColor: COLORS.cardBackground,
-              borderRadius: 10,
-              padding: 12,
-              marginBottom: 12,
-              borderWidth: 1,
-              borderColor: COLORS.border,
-              position: "relative",
-            }}
-          >
-            {/* Top Right Icons */}
-            <View
-  style={{
-    flexDirection: "row",
-    justifyContent: "flex-end",
-    marginTop: 8,
-    gap: 10,
-  }}
->
-  <View style={{ flex: 1 }}>
-    <Button
-      title="Edit"
-      color={COLORS.primary}
-      onPress={() => {
-        setIsEditing(true);
-        setEditTripId(trip.id);
-        setOrigin(trip.origin);
-        setDestination(trip.destination);
-        setDate(trip.date?.split("T")[0] || "");
-        setTime(trip.time || "");
-        setPrice(trip.price?.toString() || "");
-        setTotalSeats(trip.totalSeats?.toString() || "");
-        setType(trip.status || "PENDING");
-        setUserId(trip.vehicleIds?.[0] || null);
-
-        setTimeout(() => {
-          setModalVisible(true);
-          setUserOpen(true);
-          setTimeout(() => setUserOpen(false), 100);
-        }, 50);
+        {trips.map((trip) => {
+  const isExpanded = expandedTripId === trip.id;
+  return (
+    <TouchableOpacity
+      key={trip.id}
+      onPress={() => setExpandedTripId(isExpanded ? null : trip.id)}
+      activeOpacity={0.9}
+      style={{
+        backgroundColor: "#fff",
+        borderRadius: 10,
+        padding: 14,
+        marginBottom: 14,
+        borderWidth: 1,
+        borderColor: COLORS.border,
+        elevation: 2,
+        shadowColor: "#000",
+        shadowOffset: { width: 0, height: 1 },
+        shadowOpacity: 0.1,
+        shadowRadius: 2,
       }}
-    />
-  </View>
+    >
+      <View style={{ marginBottom: 6 }}>
+        <Text style={{ fontSize: 16, fontWeight: "bold", color: COLORS.textPrimary }}>
+          {trip.origin} → {trip.destination}
+        </Text>
+        <Text style={{ color: COLORS.textSecondary }}>
+          {new Date(trip.date).toLocaleDateString()} at {trip.time}
+        </Text>
+      </View>
 
-  <View style={{ flex: 1 }}>
-    <Button
-      title="Delete"
-      color="red"
-      onPress={() => {
-        Alert.alert(
-          "Confirm Delete",
-          "Are you sure you want to delete this trip?",
-          [
-            { text: "Cancel", style: "cancel" },
-            {
-              text: "Delete",
-              style: "destructive",
-              onPress: () => handleDeleteTrip(trip.id),
-            },
-          ]
-        );
-      }}
-    />
-  </View>
-</View>
+      <View style={{ flexDirection: "row", justifyContent: "space-between", marginTop: 6 }}>
+        <Text style={{ color: COLORS.textSecondary }}>
+          💺 {trip.availableSeats}/{trip.totalSeats} Seats
+        </Text>
+        <Text style={{ color: COLORS.textSecondary }}>💰 ${trip.price}</Text>
+      </View>
 
+      <Text style={{ color: COLORS.primary, marginTop: 4 }}>🛣 {trip.status}</Text>
 
-            <Text style={{ fontWeight: "600", color: COLORS.textPrimary }}>
-              {trip.origin} → {trip.destination}
-            </Text>
-            <Text style={{ color: COLORS.textSecondary }}>
-              Date: {new Date(trip.date).toLocaleDateString()} • Time:{" "}
-              {trip.time}
-            </Text>
-            <Text style={{ color: COLORS.textSecondary }}>
-              Price: ${trip.price} • Seats: {trip.availableSeats}/
-              {trip.totalSeats}
-            </Text>
-            <Text style={{ color: COLORS.primary }}>Status: {trip.status}</Text>
+      {/* Expanded Details */}
+      {isExpanded && (
+        <View style={{ marginTop: 10 }}>
+          <Text style={{ fontWeight: "600", marginBottom: 4 }}>🔍 Details</Text>
+
+          {trip.isTourism ? (
+            <View style={{ marginBottom: 6 }}>
+              <Text style={{ fontWeight: "500", marginBottom: 4, color: COLORS.textDark }}>
+                🏕 Tourism Package Includes:
+              </Text>
+              {trip.tourismFeatures?.lunch && <Text>🍱 Free Lunch</Text>}
+              {trip.tourismFeatures?.photographing && <Text>📸 Photography & Videography</Text>}
+              {trip.tourismFeatures?.sunsetView && <Text>🌅 Sunset/Sunrise Viewpoints</Text>}
+              {trip.tourismFeatures?.tourGuide && <Text>🧭 Local Tour Guide</Text>}
+              {trip.tourismFeatures?.culturalVisit && <Text>🕌 Cultural/Religious Visits</Text>}
+            </View>
+          ) : (
+            <Text style={{ color: COLORS.textSecondary }}>This is a regular travel trip.</Text>
+          )}
+
+          <View style={{ flexDirection: "row", justifyContent: "space-between", marginTop: 10 }}>
+            <Button
+              title="Edit"
+              color={COLORS.primary}
+              onPress={() => {
+                setIsEditing(true);
+                setEditTripId(trip.id);
+                setOrigin(trip.origin);
+                setDestination(trip.destination);
+                setDate(trip.date?.split("T")[0] || "");
+                setTime(trip.time || "");
+                setPrice(trip.price?.toString() || "");
+                setTotalSeats(trip.totalSeats?.toString() || "");
+                setType(trip.status || "PENDING");
+                setUserId(trip.vehicleIds?.[0] || null);
+                setTripType(trip.isTourism ? "Tourism" : "Travel");
+                setTourismFeatures(trip.tourismFeatures || {});
+                setTimeout(() => {
+                  setModalVisible(true);
+                  setUserOpen(true);
+                  setTimeout(() => setUserOpen(false), 100);
+                }, 50);
+              }}
+            />
+            <Button
+              title="Delete"
+              color="red"
+              onPress={() => {
+                Alert.alert(
+                  "Confirm Delete",
+                  "Are you sure you want to delete this trip?",
+                  [
+                    { text: "Cancel", style: "cancel" },
+                    {
+                      text: "Delete",
+                      style: "destructive",
+                      onPress: () => handleDeleteTrip(trip.id),
+                    },
+                  ]
+                );
+              }}
+            />
           </View>
-        ))}
+        </View>
+      )}
+    </TouchableOpacity>
+  );
+})}
+
       </View>
     </View>
   );

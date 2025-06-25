@@ -24,14 +24,18 @@ export default function Home() {
   const [page, setPage] = useState(1);
   const [hasMore, setHasMore] = useState(true);
   const [searchQuery, setSearchQuery] = useState('');
+  const [tripTypeFilter, setTripTypeFilter] = useState("All");
 
   const fetchTrips = async (pageNum = 1, refresh = false) => {
     try {
       if (refresh) setRefreshing(true);
       else if (pageNum === 1) setLoading(true);
 
-      // const url = `${API_URL}/trips/getAllTrips?page=${pageNum}&limit=5`;
-      const url = `${API_URL}/trips/public?page=${pageNum}&limit=5`;
+      // const url = `${API_URL}/trips/public?page=${pageNum}&limit=5`;
+      const url = `${API_URL}/trips/public?page=${pageNum}&limit=5${
+  tripTypeFilter !== "All" ? `&tripType=${tripTypeFilter}` : ""
+}`;
+
 
       console.log("URL", url)
 
@@ -70,6 +74,10 @@ if (!response.ok || !Array.isArray(data.trips)) {
       }
     }
   };
+  useEffect(() => {
+  fetchTrips(1, true); // refresh when filter changes
+}, [tripTypeFilter]);
+
 
   useEffect(() => {
     fetchTrips();
@@ -87,26 +95,75 @@ if (!response.ok || !Array.isArray(data.trips)) {
   );
 
   const renderItem = ({ item }) => (
-    <View style={styles.bookCard}>
-      <View style={styles.bookHeader}>
-        <Text style={styles.bookTitle}>{item.origin} → {item.destination}</Text>
-        <View style={{ flexDirection: 'row', alignItems: 'center' }}>
-          <Text style={{ color: COLORS.primary }}>{item.status}</Text>
-          {item.availableSeats < 5 && (
-            <Text style={{ marginLeft: 8, color: 'orange', fontWeight: 'bold' }}>🔥 Popular</Text>
-          )}
-          {new Date(item.date).toDateString() === new Date().toDateString() && (
-            <Text style={{ marginLeft: 8, color: 'green', fontWeight: 'bold' }}>Today</Text>
-          )}
-        </View>
+  <View style={styles.bookCard}>
+    <View style={styles.bookHeader}>
+      <Text style={styles.bookTitle}>{item.origin} → {item.destination}</Text>
+      <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+        <Text style={{ color: COLORS.primary }}>{item.status}</Text>
+        {item.availableSeats < 5 && (
+          <Text style={{ marginLeft: 8, color: 'orange', fontWeight: 'bold' }}>🔥 Popular</Text>
+        )}
+        {new Date(item.date).toDateString() === new Date().toDateString() && (
+          <Text style={{ marginLeft: 8, color: 'green', fontWeight: 'bold' }}>Today</Text>
+        )}
       </View>
-
-      <Text style={styles.caption}>Date: {new Date(item.date).toLocaleDateString()}</Text>
-      <Text style={styles.caption}>Time: {item.time}</Text>
-      <Text style={styles.caption}>Price: ${item.price}</Text>
-      <Text style={styles.caption}>Available Seats: {item.availableSeats}</Text>
     </View>
-  );
+
+    <Text style={styles.caption}>Date: {new Date(item.date).toLocaleDateString()}</Text>
+    <Text style={styles.caption}>Time: {item.time}</Text>
+    <Text style={styles.caption}>Price: ${item.price}</Text>
+    <Text style={styles.caption}>Available Seats: {item.availableSeats}</Text>
+    {item.isTourism && item.tourismFeatures && Array.isArray(item.tourismFeatures) && (
+  <View style={{ marginTop: 8 }}>
+    <Text style={{ fontWeight: '600', marginBottom: 4, color: COLORS.primary }}>
+      Tourism Packages Included:
+    </Text>
+    {item.tourismFeatures.map((feature, index) => (
+      <View key={index} style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 2 }}>
+        <Ionicons name="checkmark-circle" size={16} color="green" style={{ marginRight: 6 }} />
+        <Text style={{ color: '#333' }}>{feature}</Text>
+      </View>
+    ))}
+  </View>
+)}
+
+
+    {item.isTourism && item.tourismFeatures && typeof item.tourismFeatures === "object" && (
+  <View style={{
+    marginTop: 10,
+    backgroundColor: '#eef9f1',
+    padding: 12,
+    borderRadius: 10,
+    borderLeftWidth: 4,
+    borderLeftColor: COLORS.primary
+  }}>
+    <Text style={{ fontWeight: '600', marginBottom: 6 }}>
+      🌿 Included in This Tourism Package:
+    </Text>
+
+    {Object.entries(item.tourismFeatures).map(([key, value]) => {
+      if (!value) return null;
+
+      const icons = {
+        lunch: '🍽️ Free Lunch Included',
+        photographing: '📸 Guided Photographing & Videography',
+        sunsetView: '🌇 Sunset/Sunrise Viewing Spots',
+        tourGuide: '👨‍🏫 Local Tour Guide Available',
+        culturalVisit: '🕌 Cultural / Religious Site Visits',
+      };
+
+      return (
+        <Text key={key} style={{ marginBottom: 4 }}>
+          {icons[key] || `✅ ${key}`}
+        </Text>
+      );
+    })}
+  </View>
+)}
+
+
+  </View>
+);
 
   if (loading) return <Loader />;
 
@@ -124,6 +181,33 @@ if (!response.ok || !Array.isArray(data.trips)) {
               <Text style={styles.headerTitle}>Available Trips 🚐</Text>
               <Text style={styles.headerSubtitle}>Explore and book your journey</Text>
             </View>
+            <View style={{ alignItems: 'center', marginBottom: 12 }}>
+  <Text style={{ fontWeight: '600', marginBottom: 6 }}>Filter by Trip Type</Text>
+  <View style={{ flexDirection: 'row', gap: 10 }}>
+    {["All", "Travel", "Tourism"].map((type) => (
+      <Text
+        key={type}
+        onPress={() => setTripTypeFilter(type)}  // ✅ Let useEffect handle fetching
+
+        style={{
+          backgroundColor: tripTypeFilter === type ? COLORS.primary : '#ccc',
+          color: tripTypeFilter === type ? '#fff' : '#000',
+          paddingHorizontal: 10,
+          paddingVertical: 6,
+          borderRadius: 10,
+          marginHorizontal: 4,
+          fontWeight: 'bold',
+        }}
+      >
+        {type}
+      </Text>
+    ))}
+  </View>
+</View>
+
+
+
+
             <View style={{ paddingHorizontal: 16 }}>
               <TextInput
                 placeholder="Search by destination or origin..."
@@ -139,6 +223,7 @@ if (!response.ok || !Array.isArray(data.trips)) {
               />
             </View>
           </View>
+          
         }
         refreshControl={
           <RefreshControl

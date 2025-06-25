@@ -5,34 +5,39 @@ import COLORS from "../../constants/color";
 import styles from "../styles/home.styles";
 import { API_URL } from "../../constants/api";
 import { useAuthStore } from "../../store/authStore";
+import RefreshButton from "../components/RefreshButton";
 
 export default function OwnerHome() {
   const { token, logout } = useAuthStore();
   const [bookings, setBookings] = useState([]);
   const [loading, setLoading] = useState(true);
 
-  const fetchBookings = async () => {
-    try {
-      const res = await fetch(`${API_URL}/bookings/ownerBookings`, {
-        headers: { Authorization: `Bearer ${token}` },
-      });
-  
-      const data = await res.json();
-  
-      if (res.ok && Array.isArray(data)) {
-        setBookings(data);
-      } else {
-        console.warn("Unexpected bookings data:", data);
-        setBookings([]); // fallback
-      }
-  
-    } catch (err) {
-      console.error("Error fetching bookings:", err.message);
+ const [balance, setBalance] = useState(0); // 👈 add this line
+
+const fetchBookings = async () => {
+  try {
+    const res = await fetch(`${API_URL}/bookings/ownerBookings`, {
+      headers: { Authorization: `Bearer ${token}` },
+    });
+
+    const data = await res.json();
+
+    if (res.ok && Array.isArray(data.bookings)) {
+      setBookings(data.bookings);
+      setBalance(data.balance); // 👈 set balance from response
+    } else {
+      console.warn("Unexpected bookings data:", data);
       setBookings([]);
-    } finally {
-      setLoading(false);
     }
-  };
+  } catch (err) {
+    console.error("Error fetching bookings:", err.message);
+    setBookings([]);
+  } finally {
+    setLoading(false);
+  }
+};
+
+
   const STATUS_COLORS = {
     PENDING: COLORS.primary,
     CONFIRMED: "#1976D2",
@@ -72,6 +77,11 @@ export default function OwnerHome() {
 
   return (
     <ScrollView style={{ padding: 20, backgroundColor: COLORS.background }}>
+      <Text style={{ fontSize: 16, fontWeight: "600", marginBottom: 8 }}>
+  💰 Total Balance Received: <Text style={{ color: COLORS.primary }}>${balance.toFixed(2)}</Text>
+</Text>
+ <RefreshButton onPress={fetchBookings} />
+
       <Text style={styles.quickTextTitle}>📦 Your Trip Bookings</Text>
       {/* <TouchableOpacity onPress={logout}>
         <Text style={{ color: COLORS.primary, marginTop: 20 }}>Logout</Text>

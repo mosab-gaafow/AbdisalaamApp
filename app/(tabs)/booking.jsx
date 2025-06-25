@@ -26,6 +26,8 @@ export default function BookingForm() {
   const [trips, setTrips] = useState([]);
   const [tripId, setTripId] = useState(null);
   const [seatsBooked, setSeatsBooked] = useState("");
+  const [totalPrice, setTotalPrice] = useState(0);
+
   const [loading, setLoading] = useState(false);
   const [open, setOpen] = useState(false);
   const [tripOptions, setTripOptions] = useState([]);
@@ -54,103 +56,69 @@ export default function BookingForm() {
 
     fetchTrips();
   }, []);
-
-  // const handleSubmit = async () => {
-  //   if (!tripId || !seatsBooked) {
-  //     Alert.alert(
-  //       "Missing Fields",
-  //       "Please select a trip and enter number of seats."
-  //     );
-  //     return;
-  //   }
-
-  //   try {
-  //     setLoading(true);
-  //     const res = await fetch(`${API_URL}/bookings/registerBooking`, {
-  //       method: "POST",
-  //       headers: {
-  //         Authorization: `Bearer ${token}`,
-  //         "Content-Type": "application/json",
-  //       },
-  //       body: JSON.stringify({
-  //         tripId,
-  //         seatsBooked: parseInt(seatsBooked),
-  //       }),
-  //     });
-
-  //     const data = await res.json();
-  //     if (!res.ok) throw new Error(data.error || "Booking failed");
-
-  //     Alert.alert("Success", "Your booking was submitted successfully!");
-  //     setTripId(null);
-  //     setSeatsBooked("");
-  //     // router.push('/');
-  //     Alert.alert("Success", "Booking created! Redirecting to payment...");
-  //     router.push({
-  //       pathname: "/evcPayment",
-  //       params: {
-  //         bookingId: data.id, // 👈 ID returned from booking
-  //         amount: trips.find((t) => t.id === tripId)?.price || 0,
-  //       },
-  //     });
-  //   } catch (err) {
-  //     Alert.alert("Error", err.message || "Something went wrong");
-  //   } finally {
-  //     setLoading(false);
-  //   }
-  // };
+  const calculateTotal = (tripId, seats) => {
+  const selectedTrip = trips.find((t) => t.id === tripId);
+  const price = selectedTrip?.price || 0;
+  const total = price * parseInt(seats || 0);
+  setTotalPrice(total);
+};
 
 
-  const handleSubmit = async () => {
-    if (!tripId || !seatsBooked) {
-      Alert.alert("Missing Fields", "Please select a trip and enter number of seats.");
+ const handleSubmit = async () => {
+  if (!tripId || !seatsBooked) {
+    Alert.alert("Missing Fields", "Please select a trip and enter number of seats.");
+    return;
+  }
+
+  try {
+    setLoading(true);
+
+    // Register booking
+    const res = await fetch(`${API_URL}/bookings/registerBooking`, {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${token}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        tripId,
+        seatsBooked: parseInt(seatsBooked),
+      }),
+    });
+
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error || "Booking failed");
+
+    const selectedTrip = trips.find((t) => t.id === tripId);
+    const amount = (selectedTrip?.price || 0) * parseInt(seatsBooked || 1);
+    const ownerPhone = selectedTrip?.user?.phone;
+
+    if (!ownerPhone) {
+      Alert.alert("Missing Info", "Trip owner phone not found.");
       return;
     }
-  
-    try {
-      setLoading(true);
-  
-      // Step 1: Register Booking
-      const res = await fetch(`${API_URL}/bookings/registerBooking`, {
-        method: "POST",
-        headers: {
-          Authorization: `Bearer ${token}`,
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          tripId,
-          seatsBooked: parseInt(seatsBooked),
-        }),
-      });
-  
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error || "Booking failed");
-  
-      const selectedTrip = trips.find((t) => t.id === tripId);
-      const amount = selectedTrip?.price || 0;
-      const ownerPhone = selectedTrip?.user?.phone;
-  
-      if (!ownerPhone) {
-        Alert.alert("Missing Info", "Trip owner phone not found.");
-        return;
-      }
-  
-      // Step 2: Launch native EVC Plus USSD
-      const ussdCode = `tel:*712*${ownerPhone}*${amount}%23`; // `%23` is #
-      Alert.alert("Payment", "Opening your dialer to pay via EVC Plus...");
-  
-      setTimeout(() => {
-        Linking.openURL(ussdCode);
-      }, 1000);
-  
-      setTripId(null);
-      setSeatsBooked('');
-    } catch (err) {
-      Alert.alert("Error", err.message || "Something went wrong");
-    } finally {
-      setLoading(false);
-    }
-  };
+
+    const ussdCode = `tel:*712*${ownerPhone}*${amount}%23`;
+
+    // Reset and navigate FIRST before dialing
+    setTripId(null);
+    setSeatsBooked('');
+    router.replace("/(tabs)/profile");
+
+    // Delay to allow navigation
+    setTimeout(() => {
+      Linking.openURL(ussdCode).catch(err =>
+        Alert.alert("Dialer Error", "Could not open dialer")
+      );
+    }, 1000);
+
+  } catch (err) {
+    Alert.alert("Error", err.message || "Something went wrong");
+  } finally {
+    setLoading(false);
+  }
+};
+
   
   
   return (
@@ -177,7 +145,12 @@ export default function BookingForm() {
                 setOpen={setOpen}
                 items={tripOptions}
                 value={tripId}
-                setValue={setTripId}
+                // setValue={setTripId}
+                setValue={(value) => {
+  setTripId(value);
+  calculateTotal(value, seatsBooked);
+}}
+
                 placeholder="Choose a route"
                 style={{ marginTop: 8 }}
                 zIndex={1000}
@@ -198,12 +171,26 @@ export default function BookingForm() {
                   style={styles.input}
                   placeholder="e.g. 2"
                   value={seatsBooked}
-                  onChangeText={setSeatsBooked}
+                  // onChangeText={setSeatsBooked}
+                  onChangeText={(value) => {
+  setSeatsBooked(value);
+  calculateTotal(tripId, value);
+}}
+
                   keyboardType="numeric"
                   placeholderTextColor={COLORS.placeholderText}
                 />
               </View>
             </View>
+
+            {tripId && seatsBooked ? (
+  <View style={{ marginBottom: 16 }}>
+    <Text style={{ fontSize: 16, fontWeight: "bold", color: COLORS.success }}>
+      Total Price: ${totalPrice.toFixed(2)}
+    </Text>
+  </View>
+) : null}
+
 
             {/* Submit */}
             <TouchableOpacity
