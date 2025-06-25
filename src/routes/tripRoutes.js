@@ -16,11 +16,12 @@ router.post('/registerTrip', protectRoute, async (req, res) => {
       price,
       totalSeats,
       vehicleIds,
-      status
+      status,
+      isTourism,         // true or false
+      tourismFeatures    // JSON object with boolean flags
     } = req.body;
 
     const trip = await prisma.trip.create({
-    
       data: {
         origin,
         destination,
@@ -30,10 +31,11 @@ router.post('/registerTrip', protectRoute, async (req, res) => {
         totalSeats: parseInt(totalSeats),
         availableSeats: parseInt(totalSeats),
         vehicleIds,
-        userId: req.user.id , // <-- Trip owner
-        status, 
+        userId: req.user.id,
+        status,
+        isTourism,
+        tourismFeatures: isTourism ? tourismFeatures : undefined
       }
-      
     });
 
     res.status(201).json(trip);
@@ -42,6 +44,7 @@ router.post('/registerTrip', protectRoute, async (req, res) => {
     res.status(500).json({ error: 'Failed to create trip' });
   }
 });
+
 
 
 router.get('/getAllTrips', protectRoute, async (req, res) => {

@@ -75,26 +75,6 @@ enum TripStatus {
   CANCELLED
 }
 
-model Trip {
-  id             String   @id @default(auto()) @map("_id") @db.ObjectId
-  origin         String
-  destination    String
-  date           DateTime
-  time           String
-  price          Float
-  totalSeats     Int
-  availableSeats Int
-  vehicleIds     String[]
-  bookings       Booking[]
-  isDeleted      Boolean  @default(false)
-  status         TripStatus @default(PENDING)
-  createdAt      DateTime  @default(now())
-  updatedAt      DateTime  @updatedAt
-
-  // ✅ Add this 👇
-  userId String @db.ObjectId
-  user   User   @relation(fields: [userId], references: [id])
-}
 
 
 model Booking {
@@ -117,19 +97,30 @@ model Booking {
   paymentMethod    String?       // e.g., 'evcplus'
   transactionId    String?       // entered by the traveler
   paymentVerified  Boolean       @default(false)
-  paymentLogs      PaymentLog[]
 }
 
-model PaymentLog {
+model Trip {
   id             String   @id @default(auto()) @map("_id") @db.ObjectId
-  bookingId      String   @db.ObjectId
-  phoneNumber    String
-  amount         Float
-  invoiceId      String
-  referenceId    String?
-  status         String
-  response       Json
-  createdAt      DateTime @default(now())
+  origin         String
+  destination    String
+  date           DateTime
+  time           String
+  price          Float
+  totalSeats     Int
+  availableSeats Int
+  vehicleIds     String[]
+  bookings       Booking[]
+  isDeleted      Boolean  @default(false)
+  status         TripStatus @default(PENDING)
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
 
-  booking        Booking  @relation(fields: [bookingId], references: [id])
+  // ✅ Add this 👇
+  userId String @db.ObjectId
+  user   User   @relation(fields: [userId], references: [id])
+  // 👇 Embedded tourism features (optional)
+  isTourism      Boolean  @default(false)
+  tourismFeatures Json?
 }
+
+
