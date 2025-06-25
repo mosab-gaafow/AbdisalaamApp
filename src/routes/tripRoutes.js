@@ -1,12 +1,12 @@
-import express from 'express';
-import { PrismaClient } from '@prisma/client';
-import { ObjectId } from 'mongodb';
-import protectRoute from '../middleware/auth.middleware.js';
-import prisma from '../../prisma/client.js';
+import express from "express";
+import { PrismaClient } from "@prisma/client";
+import { ObjectId } from "mongodb";
+import protectRoute from "../middleware/auth.middleware.js";
+import prisma from "../../prisma/client.js";
 const router = express.Router();
 
 // Create a new trip
-router.post('/registerTrip', protectRoute, async (req, res) => {
+router.post("/registerTrip", protectRoute, async (req, res) => {
   try {
     const {
       origin,
@@ -17,8 +17,8 @@ router.post('/registerTrip', protectRoute, async (req, res) => {
       totalSeats,
       vehicleIds,
       status,
-      isTourism,         // true or false
-      tourismFeatures    // JSON object with boolean flags
+      isTourism, // true or false
+      tourismFeatures, // JSON object with boolean flags
     } = req.body;
 
     const trip = await prisma.trip.create({
@@ -34,114 +34,43 @@ router.post('/registerTrip', protectRoute, async (req, res) => {
         userId: req.user.id,
         status,
         isTourism,
-        tourismFeatures: isTourism ? tourismFeatures : undefined
-      }
+        tourismFeatures: isTourism ? tourismFeatures : undefined,
+      },
     });
 
     res.status(201).json(trip);
   } catch (error) {
-    console.error('Create trip error:', error);
-    res.status(500).json({ error: 'Failed to create trip' });
+    console.error("Create trip error:", error);
+    res.status(500).json({ error: "Failed to create trip" });
   }
 });
 
-
-
-router.get('/getAllTrips', protectRoute, async (req, res) => {
+router.get("/getAllTrips", protectRoute, async (req, res) => {
   try {
-    const { origin, destination, date, page = 1, limit = 10, status } = req.query;
+    const {
+      origin,
+      destination,
+      date,
+      page = 1,
+      limit = 10,
+      status,
+    } = req.query;
 
-    const { tripType } = req.query; 
+    const { tripType } = req.query;
 
     const filters = {
       isDeleted: false,
       userId: req.user.id,
     };
 
-    if (origin) filters.origin = { contains: origin, mode: 'insensitive' };
-    if (destination) filters.destination = { contains: destination, mode: 'insensitive' };
+    if (origin) filters.origin = { contains: origin, mode: "insensitive" };
+    if (destination)
+      filters.destination = { contains: destination, mode: "insensitive" };
     if (date) filters.date = new Date(date);
     if (status) filters.status = status;
 
     if (tripType === "Travel") filters.isTourism = false;
-if (tripType === "Tourism") filters.isTourism = true;
-
-
-    const skip = (parseInt(page) - 1) * parseInt(limit);
-    const take = parseInt(limit);
-
-    const total = await prisma.trip.count({ where: filters });
-
-    const trips = await prisma.trip.findMany({
-      where: filters,
-      skip,
-      take,
-      orderBy: { date: 'asc' },
-      include: {
-        user: {
-          select: {
-            name: true,
-            phone: true,
-          },
-        },
-        bookings: {
-          where: {
-             isDeleted: false,
-            status: { in: ['PENDING', 'CONFIRMED'] },
-            
-          },
-          select: {
-            seatsBooked: true,
-          },
-        },
-      },
-    });
-
-   
-
-    const formattedTrips = Array.isArray(trips)
-  ? trips.map((trip) => {
-      const totalBooked = trip.bookings.reduce((sum, b) => sum + b.seatsBooked, 0);
-      return {
-        ...trip,
-        availableSeats: trip.totalSeats - totalBooked,
-      };
-    })
-  : [];
-
-
-    res.json({
-      trips: formattedTrips,
-      total,
-      totalPages: Math.ceil(total / take),
-      currentPage: parseInt(page),
-    });
-  } catch (error) {
-    console.error('🔥 Detailed trips fetch error:', JSON.stringify(error, null, 2));
-    res.status(500).json({ error: 'Failed to get trips', details: error.message });
-  }
-});
-
-router.get('/public', protectRoute, async (req, res) => {
-  try {
-    const { origin, destination, date, page = 1, limit = 10, status } = req.query;
-
-    const { tripType } = req.query; 
-
-    const filters = {
-      isDeleted: false,
-      date: {
-        gte: new Date(new Date().setHours(0, 0, 0, 0)),
-      },
-    };
-
-    if (origin) filters.origin = { contains: origin, mode: 'insensitive' };
-    if (destination) filters.destination = { contains: destination, mode: 'insensitive' };
-    if (date) filters.date = { equals: new Date(date) }; // ✅ safe override
-    if (status) filters.status = status;
-
-    if (tripType === "Travel") filters.isTourism = false;
-if (tripType === "Tourism") filters.isTourism = true;
+    if (tripType === "Tourism") filters.isTourism = true;
 
     const skip = (parseInt(page) - 1) * parseInt(limit);
     const take = parseInt(limit);
@@ -152,7 +81,7 @@ if (tripType === "Tourism") filters.isTourism = true;
       where: filters,
       skip,
       take,
-      orderBy: { date: 'asc' },
+      orderBy: { date: "asc" },
       include: {
         user: {
           select: {
@@ -163,7 +92,95 @@ if (tripType === "Tourism") filters.isTourism = true;
         bookings: {
           where: {
             isDeleted: false,
-            status: { in: ['PENDING', 'CONFIRMED'] },
+            status: { in: ["PENDING", "CONFIRMED"] },
+          },
+          select: {
+            seatsBooked: true,
+          },
+        },
+      },
+    });
+
+    const formattedTrips = Array.isArray(trips)
+      ? trips.map((trip) => {
+          const totalBooked = trip.bookings.reduce(
+            (sum, b) => sum + b.seatsBooked,
+            0
+          );
+          return {
+            ...trip,
+            availableSeats: trip.totalSeats - totalBooked,
+          };
+        })
+      : [];
+
+    res.json({
+      trips: formattedTrips,
+      total,
+      totalPages: Math.ceil(total / take),
+      currentPage: parseInt(page),
+    });
+  } catch (error) {
+    console.error(
+      "🔥 Detailed trips fetch error:",
+      JSON.stringify(error, null, 2)
+    );
+    res
+      .status(500)
+      .json({ error: "Failed to get trips", details: error.message });
+  }
+});
+
+router.get("/public", protectRoute, async (req, res) => {
+  try {
+    const {
+      origin,
+      destination,
+      date,
+      page = 1,
+      limit = 10,
+      status,
+    } = req.query;
+
+    const { tripType } = req.query;
+
+    const filters = {
+      isDeleted: false,
+      date: {
+        gte: new Date(new Date().setHours(0, 0, 0, 0)),
+      },
+    };
+
+    if (origin) filters.origin = { contains: origin, mode: "insensitive" };
+    if (destination)
+      filters.destination = { contains: destination, mode: "insensitive" };
+    if (date) filters.date = { equals: new Date(date) }; // ✅ safe override
+    if (status) filters.status = status;
+
+    if (tripType === "Travel") filters.isTourism = false;
+    if (tripType === "Tourism") filters.isTourism = true;
+
+    const skip = (parseInt(page) - 1) * parseInt(limit);
+    const take = parseInt(limit);
+
+    const total = await prisma.trip.count({ where: filters });
+
+    const trips = await prisma.trip.findMany({
+      where: filters,
+      skip,
+      take,
+      orderBy: { date: "asc" },
+      include: {
+        user: {
+          select: {
+            name: true,
+            phone: true,
+          },
+        },
+        bookings: {
+          where: {
+            isDeleted: false,
+            status: { in: ["PENDING", "CONFIRMED"] },
           },
           select: {
             seatsBooked: true,
@@ -179,6 +196,11 @@ if (tripType === "Tourism") filters.isTourism = true;
         return {
           ...trip,
           availableSeats: available,
+          tourismFeatures: trip.tourismFeatures
+            ? typeof trip.tourismFeatures === "string"
+              ? JSON.parse(trip.tourismFeatures)
+              : trip.tourismFeatures
+            : [],
         };
       })
       .filter((t) => t.availableSeats > 0); // ✅ filter safely
@@ -191,14 +213,14 @@ if (tripType === "Tourism") filters.isTourism = true;
     });
   } catch (error) {
     console.error("🔥 /public route error:", error);
-    res.status(500).json({ error: 'Failed to get public trips', details: error.message });
+    res
+      .status(500)
+      .json({ error: "Failed to get public trips", details: error.message });
   }
 });
 
-
-
 // Get trip by ID
-router.get('/:id', protectRoute, async (req, res) => {
+router.get("/:id", protectRoute, async (req, res) => {
   try {
     const { id } = req.params;
 
@@ -211,42 +233,41 @@ router.get('/:id', protectRoute, async (req, res) => {
     // }
 
     const trip = await prisma.trip.findUnique({
-  where: { id },
-});
+      where: { id },
+    });
 
-if (!trip || trip.isDeleted || trip.userId !== req.user.id) {
-  return res.status(404).json({ error: 'Trip not found or unauthorized' });
-}
-
+    if (!trip || trip.isDeleted || trip.userId !== req.user.id) {
+      return res.status(404).json({ error: "Trip not found or unauthorized" });
+    }
 
     res.json(trip);
   } catch (error) {
-    console.error('Get trip error:', error);
-    res.status(500).json({ error: 'Failed to get trip' });
+    console.error("Get trip error:", error);
+    res.status(500).json({ error: "Failed to get trip" });
   }
 });
 
 // Update a trip
 // Update a trip
-router.put('/:id', protectRoute, async (req, res) => {
+router.put("/:id", protectRoute, async (req, res) => {
   try {
     const { id } = req.params;
     const data = req.body;
 
     // Log the incoming data to check if it's coming correctly
-    console.log('Updating trip with ID:', id);
-    console.log('Received data for update:', data);
+    console.log("Updating trip with ID:", id);
+    console.log("Received data for update:", data);
 
     // Check if the date is in correct ISO format
     if (data.date && !Date.parse(data.date)) {
-      return res.status(400).json({ error: 'Invalid date format' });
+      return res.status(400).json({ error: "Invalid date format" });
     }
 
     // Ensure that the trip exists and belongs to the user
     const existing = await prisma.trip.findUnique({ where: { id } });
 
     if (!existing || existing.isDeleted || existing.userId !== req.user.id) {
-      return res.status(404).json({ error: 'Trip not found or unauthorized' });
+      return res.status(404).json({ error: "Trip not found or unauthorized" });
     }
 
     // Perform the update
@@ -254,29 +275,28 @@ router.put('/:id', protectRoute, async (req, res) => {
       where: { id },
       data: {
         ...data,
-        date: data.date ? new Date(data.date) : existing.date,  // Ensure date is converted correctly
+        date: data.date ? new Date(data.date) : existing.date, // Ensure date is converted correctly
       },
     });
 
     // Log the updated trip data
-    console.log('Updated trip:', trip);
+    console.log("Updated trip:", trip);
 
     res.json(trip);
   } catch (error) {
     // Log the error with the full details
-    console.error('Update trip error:', error);
+    console.error("Update trip error:", error);
 
     // Return a detailed error response
     res.status(500).json({
-      error: 'Failed to update trip',
+      error: "Failed to update trip",
       details: error.message, // Include error details in the response
     });
   }
 });
 
-
 // Soft delete trip
-router.delete('/:id', protectRoute,  async (req, res) => {
+router.delete("/:id", protectRoute, async (req, res) => {
   try {
     const { id } = req.params;
 
@@ -287,23 +307,21 @@ router.delete('/:id', protectRoute,  async (req, res) => {
 
     const existing = await prisma.trip.findUnique({ where: { id } });
 
-if (!existing || existing.isDeleted || existing.userId !== req.user.id) {
-  return res.status(404).json({ error: 'Trip not found or unauthorized' });
-}
+    if (!existing || existing.isDeleted || existing.userId !== req.user.id) {
+      return res.status(404).json({ error: "Trip not found or unauthorized" });
+    }
 
-const trip = await prisma.trip.update({
-  where: { id },
-  data: { isDeleted: true },
-});
+    const trip = await prisma.trip.update({
+      where: { id },
+      data: { isDeleted: true },
+    });
 
-
-    res.json({ message: 'Trip deleted (soft)', trip });
+    res.json({ message: "Trip deleted (soft)", trip });
   } catch (error) {
-    console.error('Delete trip error:', error);
-    res.status(500).json({ error: 'Failed to delete trip' });
+    console.error("Delete trip error:", error);
+    res.status(500).json({ error: "Failed to delete trip" });
   }
 });
-
 
 router.get("/ownerEarnings", protectRoute, async (req, res) => {
   try {
@@ -319,7 +337,7 @@ router.get("/ownerEarnings", protectRoute, async (req, res) => {
     const bookings = await prisma.booking.findMany({
       where: {
         tripId: { in: tripIds },
-        paymentStatus: 'paid',
+        paymentStatus: "paid",
         paymentVerified: true,
       },
       select: {
