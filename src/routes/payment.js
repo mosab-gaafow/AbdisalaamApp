@@ -66,8 +66,17 @@ router.post("/pay", protectRoute, async (req, res) => {
       });
     }
 
+
+
+
     // Respond with full API result
     res.status(200).json(response.data);
+
+        console.log("📨 Outgoing payment:", {
+  accountNo,
+  amount,
+  invoiceId,
+});
   } catch (error) {
     console.error("Payment error:", error.message);
     res.status(500).json({ error: "Payment failed", detail: error.message });
