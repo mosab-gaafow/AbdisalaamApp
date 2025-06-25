@@ -100,7 +100,7 @@ router.get("/ownerBookings", protectRoute, async (req, res) => {
   }
 });
 
-// CREATE a booking with atomic transaction
+
 router.post("/registerBooking", protectRoute, async (req, res) => {
   const { tripId, seatsBooked } = req.body;
   const userId = req.user.id;
@@ -111,19 +111,7 @@ router.post("/registerBooking", protectRoute, async (req, res) => {
 
   try {
     const result = await prisma.$transaction(async (tx) => {
-      // Lock the trip row for update
-      const trip = await tx.trip.findFirst({
-        where: { id: tripId, isDeleted: false, status: "PENDING" },
-        lock: { mode: "ForUpdate" }, // 👈 Locks the row to prevent race
-      });
-
-      if (!trip) throw new Error("Trip not found or not bookable");
-
-      if (trip.availableSeats < seatsBooked) {
-        throw new Error("Not enough seats available");
-      }
-
-      // Check if user already booked this trip
+      // Step 1: Check if user already booked this trip
       const existingBooking = await tx.booking.findFirst({
         where: {
           userId,
@@ -136,21 +124,32 @@ router.post("/registerBooking", protectRoute, async (req, res) => {
         throw new Error("You already have a booking for this trip");
       }
 
-      // Create booking
+      // Step 2: Atomically decrease availableSeats if enough seats
+      const updatedTrip = await tx.trip.updateMany({
+        where: {
+          id: tripId,
+          isDeleted: false,
+          status: "PENDING",
+          availableSeats: { gte: seatsBooked },
+        },
+        data: {
+          availableSeats: {
+            decrement: seatsBooked,
+          },
+        },
+      });
+
+      if (updatedTrip.count === 0) {
+        throw new Error("Not enough seats available or trip not found");
+      }
+
+      // Step 3: Create booking
       const booking = await tx.booking.create({
         data: {
           tripId,
           userId,
           seatsBooked,
           status: "PENDING",
-        },
-      });
-
-      // Decrease available seats
-      await tx.trip.update({
-        where: { id: tripId },
-        data: {
-          availableSeats: { decrement: seatsBooked },
         },
       });
 
@@ -163,6 +162,7 @@ router.post("/registerBooking", protectRoute, async (req, res) => {
     res.status(400).json({ error: err.message });
   }
 });
+
 
 
 //  GET all bookings (admin use)
