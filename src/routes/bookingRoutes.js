@@ -100,47 +100,70 @@ router.get("/ownerBookings", protectRoute, async (req, res) => {
   }
 });
 
-//  CREATE a booking
+// CREATE a booking with atomic transaction
 router.post("/registerBooking", protectRoute, async (req, res) => {
+  const { tripId, seatsBooked } = req.body;
+  const userId = req.user.id;
+
+  if (!tripId || !seatsBooked) {
+    return res.status(400).json({ error: "Trip ID and seats required" });
+  }
+
   try {
-    const { tripId, seatsBooked } = req.body;
-    const userId = req.user.id;
+    const result = await prisma.$transaction(async (tx) => {
+      // Lock the trip row for update
+      const trip = await tx.trip.findFirst({
+        where: { id: tripId, isDeleted: false, status: "PENDING" },
+        lock: { mode: "ForUpdate" }, // 👈 Locks the row to prevent race
+      });
 
-    if (!tripId || !seatsBooked) {
-      return res.status(400).json({ error: "Trip ID and seats required" });
-    }
+      if (!trip) throw new Error("Trip not found or not bookable");
 
-    const trip = await prisma.trip.findFirst({
-      where: { id: tripId, isDeleted: false, status: "PENDING" },
+      if (trip.availableSeats < seatsBooked) {
+        throw new Error("Not enough seats available");
+      }
+
+      // Check if user already booked this trip
+      const existingBooking = await tx.booking.findFirst({
+        where: {
+          userId,
+          tripId,
+          isDeleted: false,
+        },
+      });
+
+      if (existingBooking) {
+        throw new Error("You already have a booking for this trip");
+      }
+
+      // Create booking
+      const booking = await tx.booking.create({
+        data: {
+          tripId,
+          userId,
+          seatsBooked,
+          status: "PENDING",
+        },
+      });
+
+      // Decrease available seats
+      await tx.trip.update({
+        where: { id: tripId },
+        data: {
+          availableSeats: { decrement: seatsBooked },
+        },
+      });
+
+      return booking;
     });
 
-    if (!trip)
-      return res.status(404).json({ error: "Trip not found or not bookable" });
-    if (trip.availableSeats < seatsBooked) {
-      return res.status(400).json({ error: "Not enough seats available" });
-    }
-
-    const booking = await prisma.booking.create({
-      data: {
-        tripId,
-        userId,
-        seatsBooked,
-        status: "PENDING",
-      },
-    });
-
-    await prisma.trip.update({
-      where: { id: tripId },
-      data: {
-        availableSeats: { decrement: seatsBooked },
-      },
-    });
-
-    res.status(201).json(booking);
+    res.status(201).json(result);
   } catch (err) {
-    res.status(500).json({ error: "Booking failed", details: err.message });
+    console.error("Booking error:", err.message);
+    res.status(400).json({ error: err.message });
   }
 });
+
 
 //  GET all bookings (admin use)
 router.get("/getAllBookings", async (req, res) => {

@@ -97,6 +97,8 @@ model Booking {
   paymentMethod    String?       // e.g., 'evcplus'
   transactionId    String?       // entered by the traveler
   paymentVerified  Boolean       @default(false)
+
+  @@unique([userId, tripId]) 
 }
 
 model Trip {
